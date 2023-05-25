@@ -31,7 +31,7 @@ $app->get('/', function (Request $request, Response $response, $args) {
     $response->getBody()->write("Hello world!");
     return $response;
 });
-
+session_start();
 $app->get('/users', function (Request $request, Response $response, $args) {
     $db = $this->get('db');
     $sth = $db->prepare("SELECT * FROM users");
@@ -246,24 +246,41 @@ $app->post('/add-cart', function (Request $request, Response $response, $args) {
 
     $id = $parsedBody["itemId"];
     $basket = array();
-    if(isset($_COOKIE['basket']))
-        $basket = json_decode($_COOKIE['basket'], true);
+    if(isset($_SESSION['basket']))
+        $basket = $_SESSION['basket'];
     $basket[] = $id;
-    setcookie("basket", json_encode($basket));
+    $_SESSION["basket"]=$basket;
+    // setcookie("basket", json_encode($basket));
     $redirect = "http://localhost:8888/products";
     header("Location: $redirect");
 });
 
 $app->get('/cart', function (Request $request, Response $response, $args) {
-    $db = $this->get('db');
-    $sth = $db->prepare("SELECT * FROM products");
-    $sth->execute();
-
-    $products = $sth->fetchAll(\PDO::FETCH_OBJ);
     $basket = array();
-    // dump($basket);
-    if(isset($_COOKIE['basket']))
-        $basket = json_decode($_COOKIE['basket'], true);
+    // dump($basket);  WHERE id IN 
+    if(isset($_SESSION['basket']))
+        $basket = $_SESSION['basket'];
+    // $basket = array_unique($basket);
+    dump($basket);
+    $db = $this->get('db');
+    // $sth = $db->prepare("SELECT * FROM products WHERE id IN(' . $inQuery . ')'");
+
+    // $inQuery = implode(',', array_fill(0, count($basket), '?'));
+    $inKeys = array_map(function($key){return ':var_'.$key;}, array_values($basket));
+    // dd($inKeys);
+    $sql = 'SELECT * FROM `products` WHERE `id` IN ('.implode(',', $inKeys).')';
+    // dd($sql);
+    $stmt = $db->prepare($sql);
+    $basket2 = array_unique($basket);
+    foreach($basket2 as $key=>$val) {
+        // dump($val);
+        $stmt->bindValue(':var_'.$val, $val);
+    }
+
+    $stmt->execute();
+
+    $products = $stmt->fetchAll(\PDO::FETCH_OBJ);
+    dump($products);
     $newBasket = array();
     $per = array_count_values($basket);
     foreach($per as $key=>$value){
@@ -290,11 +307,15 @@ $app->post('/remove-cart', function (Request $request, Response $response, $args
     $parsedBody = $request->getParsedBody();
     $arrayId = $parsedBody["key"];
     $basket = array();
-    if(isset($_COOKIE['basket']))
-        $basket = json_decode($_COOKIE['basket'], true);
+    if(isset($_SESSION['basket']))
+        $basket = $_SESSION['basket'];
     $key = array_search($arrayId, $basket);
     unset($basket[$key]);
-    setcookie("basket", json_encode($basket));
+    // unset($_SESSION["basket"]);
+    $_SESSION["basket"] = $basket;
+
+    // $_SESSION["basket"] = $basket;
+
     $redirect = "http://localhost:8888/cart";
     header("Location: $redirect");
 });
